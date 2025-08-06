@@ -1,7 +1,18 @@
 from rest_framework import serializers
-from .models import Product,ProductImage,ProductReviews,ReviewImage,ProductQuestion,ProductAnswers
-from order.models import ProductOrders
+from .models import *
+from order.models import OrderItems
 from users.models import Seller
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    image_url=serializers.SerializerMethodField()
+    class Meta:
+        model=ProductImage
+        fields=['image_id']
+
+    def get_image_url(self,obj):
+        request=self.context.get('request')
+        return request.build_absolute_uri(obj.image_pic.url) if obj.image_pic else None
+
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
@@ -28,16 +39,6 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Products sold can't be negative")
         return value
 
-class ProductImageSerializer(serializers.ModelSerializer):
-    image_url=serializers.SerializerMethodField()
-    class Meta:
-        model=ProductImage
-        fields=['image_id']
-
-    def get_image_url(self,obj):
-        request=self.context.get('request')
-        return request.build_absolute_uri(obj.image_pic.url) if obj.image_pic else None
-
 class ProductReviewsSerializer(serializers.ModelSerializer):
     class Meta:
         model=ProductReviews
@@ -63,8 +64,7 @@ class ProductReviewsSerializer(serializers.ModelSerializer):
             if not review_product:
                 raise serializers.ValidationError('No product object for review')
 
-        # if review_product.items.order_cart
-        if not ProductOrders.objects.filter(
+        if not OrderItems.objects.filter(
                 order__order_user=user,
                 order__order_status='completed',
                 order_product=review_product,
@@ -109,3 +109,13 @@ class ProductAnswerSerializer(serializers.ModelSerializer):
         if question.product.p_seller != seller:
             raise serializers.ValidationError('Only product seller can answer to this question')
 
+class ProductCategoriesSerializer(serializers.ModelSerializer):
+    parent=serializers.SerializerMethodField()
+    breadcrumbs=serializers.SerializerMethodField()
+    def get_parent(self,obj):
+        if self.parent is not None:
+            return ProductCategoriesSerializer(obj.parent.all(),many=True).data
+        return []
+
+    def get_breadcrumbs(self,obj):
+        return[{"name":cat.name,'slug':cat.slug} for cat in obj.get_breadcrumbs()]
