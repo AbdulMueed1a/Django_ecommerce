@@ -1,9 +1,32 @@
+import uuid
+from datetime import timedelta
+from pyotp import random_base32
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.core.validators import validate_email
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils import timezone
+
 
 class CustomUser(AbstractUser):
     address = models.CharField(max_length=255, blank=True, null=True)
+    email= models.EmailField(unique=True,validators=[validate_email])
+    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_2fa_enabled = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    otp_secret = models.CharField(max_length=32, blank=True, null=True)
+
+    @property
+    def is_seller(self):
+        return Seller.objects.filter(seller_user=self.id).exists()
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
+    def save(self,*args,**kwargs):
+        if self.is_2fa_enabled:
+            self.otp_secret=random_base32()
 
 class Seller(models.Model):
     seller_id=models.AutoField(primary_key=True,unique=True)
@@ -11,3 +34,18 @@ class Seller(models.Model):
     seller_store_name=models.CharField()
     # seller_rating=models.FloatField()
     seller_since=models.DateField(auto_now_add=True)
+
+
+class EmailToken(models.Model):
+    user=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    token=models.UUIDField(default=uuid.uuid4,unique=True)
+    used=models.BooleanField(default=False)
+    created_at=models.DateTimeField(auto_now_add=True)
+    expires_at=models.DateTimeField()
+    def save(self,*args,**kwargs):
+        if not self.expires_at:
+            self.expires_at=timezone.now()+timedelta(hours=24)
+        super().save(*args,**kwargs)
+    @property
+    def is_expired(self):
+        return timezone.now()>self.expires_at

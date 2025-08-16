@@ -20,14 +20,21 @@ load_dotenv()
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+FRONTEND_URL="http://localhost:8000"
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG')
 
-ALLOWED_HOSTS = []
+EMAIL_HOST=os.environ.get('SMTP_SERVER')
+EMAIL_PORT=os.environ.get('SMTP_PORT')
+EMAIL_HOST_USER=os.environ.get('SENDER_EMAIL')
+EMAIL_HOST_PASSWORD=os.environ.get('SENDER_EMAIL_PASSWORD')
+EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend'
 
+ALLOWED_HOSTS = []
 
 # Application definition
 
@@ -39,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
     'users',
     'order',
     'product_view',
@@ -131,3 +139,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES':(
+        'rest_framework_simplejwt.authentication.JWTAuthentication'
+    )
+}
+

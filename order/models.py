@@ -5,6 +5,7 @@ from product_view.models import Product
 class Order(models.Model):
     Status_Choices=[
         ('completed','Completed'),
+        ('paid','Paid'),
         ('canceled','Canceled'),
         ('pending','Pending'),
     ]
@@ -15,6 +16,15 @@ class Order(models.Model):
     order_status=models.CharField(max_length=30,
                                   choices=Status_Choices,
                                   default='pending')
+    @property
+    def total(self):
+        return sum(item.total for item in self.items.all())
+
+    def save(self,*args,**kwargs):
+        if self.order_status=='canceled':
+            self.shipment.delete()
+        super().save(*args,**kwargs)
+
 
 class Cart(models.Model):
     user=models.OneToOneField(settings.AUTH_USER_MODEL,
@@ -35,28 +45,37 @@ class CartItems(models.Model):
                            related_name='items')
     def __str__(self):
         return self.product.p_title
+    @property
+    def product_price(self):
+        return self.product.p_price*self.quantity
+    class Meta:
+        unique_together = ['cart', 'product']
 
-    def save(self,*args,**kwargs):
-
-        if self.objects.filter(
-            product=self.product,
-            cart__user=self.cart.user
-        ).exists():
-            self.quantity+=1
-            return
-        super().save(*args,**kwargs)
+    # def save(self,*args,**kwargs):
+    #
+    #     if self.objects.filter(
+    #         product=self.product,
+    #         cart__user=self.cart.user
+    #     ).exists():
+    #         self.quantity+=1
+    #         return
+    #     super().save(*args,**kwargs)
 
 class OrderItems(models.Model):
     product=models.ForeignKey(Product,
-                              on_delete=models.CASCADE,
-                              related_name='items')
+                              on_delete=models.CASCADE
+                              )
     quantity=models.PositiveIntegerField(default=1)
     order=models.ForeignKey(Order,
                             on_delete=models.SET_NULL,
                             null=True,
                             blank=True,
-                            related_name="cart_products")
-    price_at_purchase=models.DecimalField()
+                            related_name="items")
+    price_at_purchase=models.DecimalField(decimal_places=2)
+
+    @property
+    def total(self):
+        return self.price_at_purchase * self.quantity
 
 class Shipping(models.Model):
     SHIPPING_STATUS=[
@@ -77,3 +96,7 @@ class Shipping(models.Model):
         Order,
         on_delete=models.PROTECT,
         related_name='shipment')
+    def save(self,*args,**kwargs):
+        if self.shipping_status=='received':
+            self.order.order_status='completed'
+        super().save(*args,**kwargs)
