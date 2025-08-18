@@ -71,7 +71,7 @@ class OrderItems(models.Model):
                             null=True,
                             blank=True,
                             related_name="items")
-    price_at_purchase=models.DecimalField(decimal_places=2)
+    price_at_purchase=models.DecimalField(decimal_places=2,max_digits=10)
 
     @property
     def total(self):

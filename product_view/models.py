@@ -46,7 +46,7 @@ class Product(models.Model):
     p_id=models.AutoField(primary_key=True,unique=True)
     p_title=models.CharField(max_length = 35)
     p_description=models.TextField()
-    p_price=models.DecimalField()
+    p_price=models.DecimalField(decimal_places=2,max_digits=10)
     p_posted=models.DateTimeField(auto_now_add=True)
     p_category=models.ForeignKey(ProductCategories,on_delete=models.CASCADE,related_name='products')
     p_seller=models.ForeignKey( Seller ,on_delete=models.CASCADE,related_name='products')

@@ -25,8 +25,9 @@ class CustomUser(AbstractUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
     def save(self,*args,**kwargs):
-        if self.is_2fa_enabled:
+        if self.is_2fa_enabled and not self.otp_secret:
             self.otp_secret=random_base32()
+        super().save(*args,**kwargs)
 
 class Seller(models.Model):
     seller_id=models.AutoField(primary_key=True,unique=True)

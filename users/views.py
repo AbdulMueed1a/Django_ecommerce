@@ -10,6 +10,8 @@ from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
 from rest_framework import status
+from rest_framework.decorators import api_view,permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -28,7 +30,7 @@ User=get_user_model()
 class RegistrationView(APIView):
     @staticmethod
     def send_verification_mail(user,token):
-        url=f'{settings.FRONTEND_URL}/verify_email/{token}'
+        url=f'{settings.FRONTEND_URL}/user/verify_email/{str(token.token)}'
         try:
             send_mail(
                 subject="Your Email Verification link",
@@ -37,7 +39,7 @@ class RegistrationView(APIView):
                        {url}
                   """,
                 from_email=settings.EMAIL_HOST_USER,
-                recipient_list=[user]
+                recipient_list=[user.email]
                 )
         except Exception as e:
             print(f"Failed to send verification email: {str(e)}")
@@ -66,10 +68,11 @@ class RegistrationView(APIView):
         try:
             with transaction.atomic():
                 user=serializer.save()
+                user.refresh_from_db()
 
                 verification_token=EmailToken.objects.create(user=user)
 
-            self.send_verification_mail(user,verification_token)
+                self.send_verification_mail(user,verification_token)
 
             return Response({
                 'success':True,
@@ -84,10 +87,10 @@ class RegistrationView(APIView):
                 'message':'internal server or someshit causing issues',
                 'errors': serializer.errors
             },status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-def email_verification(request):
-    if request.method=='post':
-        token=request.data.get('token')
+@api_view(['GET'])
+def email_verification(request,token):
+    if request.method=='GET':
+        # token=request.data.get('token')
         if not token:
             return Response({
                 'success':False,
@@ -131,9 +134,10 @@ def email_verification(request):
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
         return Response(f'this request method {request.method} is not allowed',status=status.HTTP_403_FORBIDDEN)
-
+@api_view(['GET','POST'])
+@permission_classes([AllowAny])
 def resend_verification_mail(request):
-    if request.method=='post':
+    if request.method=='POST':
         email=request.data.get('email')
         if not email:
             return Response({
@@ -141,7 +145,7 @@ def resend_verification_mail(request):
                 'message':'provide email : REQUIRED!!'
             },status=status.HTTP_400_BAD_REQUEST)
         try:
-            user=get_object_or_404(User,email=email)
+            user=User.objects.get(email=email)
 
             if user.is_verified:
                 return Response({
@@ -152,12 +156,11 @@ def resend_verification_mail(request):
             with transaction.atomic():
                 EmailToken.objects.filter(user=user,used=False).update(used=True)
                 token=EmailToken.objects.create(user=user)
-
-            RegistrationView.send_verification_mail(token=token.token,user=user)
+                RegistrationView.send_verification_mail(token=token,user=user)
 
             return Response({
                 'success':True,
-                'msg':'email verified successfully',
+                'message':'If the email exists, a verification link has been sent.',
             },status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
@@ -194,9 +197,9 @@ class ObtainTokenWith2fa(TokenObtainPairView):
         except TokenError as e:
             raise InvalidToken(e.args[0]) from e
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
-
+@api_view(['POST'])
 def verify_2fa(request):
-    if request.method=='post':
+    if request.method=='POST':
         try:
             token2fa=request.data.get('token2fa')
             data=signing.loads(token2fa,max_age=500)

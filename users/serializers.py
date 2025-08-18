@@ -1,7 +1,9 @@
 from rest_framework import serializers
-from .models import Seller,CustomUser
+from .models import Seller
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     password=serializers.CharField(
         write_only=True,
@@ -15,11 +17,11 @@ class UserSerializer(serializers.ModelSerializer):
     )
     terms_accepted=serializers.BooleanField(write_only=True)
     class Meta:
-        model=CustomUser
+        model=User
         fields=['email','address','username','first_name','last_name','password','terms_accepted','password_confirm','is_2fa_enabled']
 
     def validate_email(self,value):
-        if CustomUser.objects.filter(email=value).exists():
+        if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('This email is already linked to an account')
         return value
 
@@ -35,8 +37,10 @@ class UserSerializer(serializers.ModelSerializer):
         return attrs
 
 
-    def create(self, validated_data):
-        user=CustomUser.objects.create(password=validated_data.pop('password'),**validated_data)
+    def create_user(self, validated_data):
+        password=validated_data.pop('password')
+        user=User.objects.create(**validated_data)
+        user.set_password(password)
         return user
 
 class SellerSerializer(serializers.ModelSerializer):

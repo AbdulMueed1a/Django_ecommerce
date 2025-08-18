@@ -30,6 +30,7 @@ DEBUG = os.environ.get('DEBUG')
 
 EMAIL_HOST=os.environ.get('SMTP_SERVER')
 EMAIL_PORT=os.environ.get('SMTP_PORT')
+EMAIL_USE_TLS = True
 EMAIL_HOST_USER=os.environ.get('SENDER_EMAIL')
 EMAIL_HOST_PASSWORD=os.environ.get('SENDER_EMAIL_PASSWORD')
 EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend'
@@ -141,8 +142,8 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES':(
+    'DEFAULT_AUTHENTICATION_CLASSES':[
         'rest_framework_simplejwt.authentication.JWTAuthentication'
-    )
+    ]
 }
 
