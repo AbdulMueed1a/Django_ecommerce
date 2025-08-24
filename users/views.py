@@ -2,16 +2,17 @@ import string
 import random
 import pyotp
 
-from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
 from django.db import transaction
-from django.shortcuts import redirect, get_object_or_404
+from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model,authenticate
 from django.core.mail import send_mail
 from django.core import signing
 from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view,permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny,IsAuthenticated
 from rest_framework.request import Request
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -20,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .serializers import UserSerializer
 from .models import EmailToken
+from django.contrib.auth import views
 
 User=get_user_model()
 
@@ -45,8 +47,10 @@ class RegistrationView(APIView):
             print(f"Failed to send verification email: {str(e)}")
 
     def post(self,request):
-        if request.user.is_authenticated:
-            return redirect('/logout')
+        if get_user_model().is_authenticated:
+            return Response({
+                'message': 'Already signed in'
+            },status=status.HTTP_403_FORBIDDEN)
         # secretkey=pyotp.random_base32()
         # otp=pyotp.TOTP(
         #     s=secretkey,
@@ -81,12 +85,13 @@ class RegistrationView(APIView):
             },status.HTTP_201_CREATED)
 
         except Exception as e:
-            print(f'exeption occured while signup: {e}')
+            print(f'exception occurred while signup: {e}')
             return Response({
                 'success':False,
                 'message':'internal server or someshit causing issues',
                 'errors': serializer.errors
             },status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['GET'])
 def email_verification(request,token):
     if request.method=='GET':
@@ -134,6 +139,7 @@ def email_verification(request,token):
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
         return Response(f'this request method {request.method} is not allowed',status=status.HTTP_403_FORBIDDEN)
+
 @api_view(['GET','POST'])
 @permission_classes([AllowAny])
 def resend_verification_mail(request):
@@ -176,16 +182,121 @@ def resend_verification_mail(request):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     else:
-        return Response(f'this request method {request.method} is not allowed', status=status.HTTP_403_FORBIDDEN)
+        return Response(f'this request method {request.method} is not allowed', status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+class PasswordReset(APIView):
+    @staticmethod
+    def send_password_reset_mail(user, token):
+        url = f'{settings.FRONTEND_URL}/user/password_reset/confirm/{str(token)}'
+        try:
+            send_mail(
+                subject="Your password reset link",
+                message=f"""
+                           here is your password reset link : 
+                           {url}
+                      """,
+                from_email=settings.EMAIL_HOST_USER,
+                recipient_list=[user.email]
+            )
+        except Exception as e:
+            print(f"Failed to send verification email: {str(e)}")
+    @permission_classes([AllowAny])
+    def post(self,request):
+        try:
+            email = request.data.get('email')
+            token = request.data.get('token') or None
+            if not email:
+                return Response({
+                    "success": False,
+                    'message': 'provide email : REQUIRED!!'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({
+                'success': True,
+                'message': 'If user exists the password was set'
+            }, status=status.HTTP_200_OK)
+        if not token:
+            try:
+                reset_token=default_token_generator.make_token(user=user)
+                self.send_password_reset_mail(user=user,token=reset_token)
+                return Response(
+                    {'success': True,
+                     'message': 'Password reset mail sent'},
+                    status=status.HTTP_200_OK
+                )
+            except Exception as e:
+                print(f'error  : {e}')
+                return Response(
+                    {'success':False,
+                     'message':'Password reset mail failed : Internal server error'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            password=request.data.get('password')
+            password_conform=request.data.get('password_confirm')
+            if not password or not password_conform:
+                return Response(
+                    {'success': False,
+                     'message': 'No Password Provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if password != password_conform:
+                return Response(
+                    {'success': False,
+                     'message': "Provided passwords don't match"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            token_bool=default_token_generator.check_token(user=user,token=token)
+            if not token_bool:
+                return Response({
+                    "success": False,
+                    'message': 'The provided password reset token is either wrong or expired'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(password)
+            user.save()
+            return Response({
+                'success': True,
+                'message': 'If user exists the password was set'
+            }, status=status.HTTP_200_OK)
+
 
 class ObtainTokenWith2fa(TokenObtainPairView):
+    @staticmethod
+    def generate_otp(email,length=6):
+        characters = string.ascii_letters + string.digits
+        otp = ''.join(random.choice(characters) for _ in range(length))
+        cache.set(f'otp_{email}',otp,timeout=300)
+        return otp
+    @staticmethod
+    def verify_otp(email,otp):
+        code=cache.get(f'otp_{email}',default=None)
+        return str(code)==str(otp)
+    @staticmethod
+    def send_otp_mail(email,code):
+        try:
+            send_mail(
+                subject="Your Email Verification link",
+                message=f"""
+                       here is your 2fa code : 
+                       {code}
+                  """,
+                from_email=settings.EMAIL_HOST_USER,
+                recipient_list=[email]
+                )
+        except Exception as e:
+            print(f"Failed to send verification email: {str(e)}")
     def post(self, request: Request, *args, **kwargs) -> Response:
-        username=request.data.get('username')
+        email=request.data.get('email')
         password=request.data.get('password')
 
-        user=authenticate(request,username,password)
+        user=authenticate(email=email,password=password)
         if getattr(user,'is_2fa_enabled',False):
-            token2fa=signing.dumps({'username':username,'purpose':'2fa'},)
+            token2fa=signing.dumps({'email':email,'purpose':'2fa'},)
+            otp=self.generate_otp(email=email)
+            self.send_otp_mail(email=email,code=otp)
+            # totp = pyotp.TOTP(user.otp_secret,interval=800)
+            # self.send_otp_mail(email=email,code=totp.now())
             return Response({
                 'details':'Two factor verification required',
                 'token2fa': token2fa,
@@ -197,21 +308,25 @@ class ObtainTokenWith2fa(TokenObtainPairView):
         except TokenError as e:
             raise InvalidToken(e.args[0]) from e
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
 @api_view(['POST'])
 def verify_2fa(request):
     if request.method=='POST':
         try:
             token2fa=request.data.get('token2fa')
+            otp = request.data.get('otp')
             data=signing.loads(token2fa,max_age=500)
             if data.get('purpose') != '2fa':
                 return Response({
                     'success': False,
-                    'message': 'The provided token was created for some other purpose'
+                    'message': 'The provided token cant be used in this context'
                 }, status.HTTP_400_BAD_REQUEST)
-            username=data.get('username')
-            user=User.objects.get(username=username)
-            totp=pyotp.TOTP(request.user.otp_secret)
-            ok=totp.verify(otp=request.data.get('otp'))
+            email=data.get('email')
+            user=User.objects.get(email=email)
+            # totp=pyotp.TOTP(user.otp_secret)
+            ok=ObtainTokenWith2fa.verify_otp(email, otp)
+            # ok=totp.verify(otp=otp,valid_window=1)
+            print(ok)
 
             if ok:
                 refresh = RefreshToken.for_user(user=user)
@@ -219,6 +334,11 @@ def verify_2fa(request):
                     'access':str(refresh.access_token),
                     'refresh':str(refresh)
                 },status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Invalid or expired OTP'
+                }, status=status.HTTP_400_BAD_REQUEST)
         except signing.SignatureExpired:
             return Response(
                 {
@@ -231,8 +351,26 @@ def verify_2fa(request):
                     'msg': 'The provided 2fa token is expired signin again'
                 }, status=status.HTTP_400_BAD_REQUEST
             )
+        except Exception as e:
+            print(f"2fa verification error: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Failed to verify 2fa.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
-        return Response({"msg":f"request method {request.method} is not allowed"})
+        return Response({"msg":f"request method {request.method} is not allowed"},status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+@permission_classes([IsAuthenticated])
+def setup_authenticator_app(request):
+    user=request.user
+    if user.is_2fa_enabled:
+        return Response({
+            "success": False,
+            'message': '2fa Already setup'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+
 
 # @login_not_required
 # def signin(request):

@@ -20,6 +20,11 @@ class UserSerializer(serializers.ModelSerializer):
         model=User
         fields=['email','address','username','first_name','last_name','password','terms_accepted','password_confirm','is_2fa_enabled']
 
+    def validate_username(self,value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('This username is already linked to an account')
+        return value
+
     def validate_email(self,value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('This email is already linked to an account')
@@ -37,10 +42,12 @@ class UserSerializer(serializers.ModelSerializer):
         return attrs
 
 
-    def create_user(self, validated_data):
+    def create(self, validated_data):
         password=validated_data.pop('password')
+
         user=User.objects.create(**validated_data)
         user.set_password(password)
+        user.save()
         return user
 
 class SellerSerializer(serializers.ModelSerializer):
