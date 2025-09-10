@@ -1,3 +1,5 @@
 .env
 /uploads
 .idea
+.gitignore
+.github

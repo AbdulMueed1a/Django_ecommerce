@@ -1,6 +1,6 @@
+import logging
 import string
 import random
-import pyotp
 
 from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
@@ -19,12 +19,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken,TokenError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import UserSerializer
+from .serializers import UserSerializer,SellerSerializer
 from .models import EmailToken
-from django.contrib.auth import views
 
 User=get_user_model()
-
+logger=logging.getLogger(__name__)
 # def generate_otp(length=6):
 #     characters = string.ascii_letters + string.digits
 #     otp = ''.join(random.choice(characters) for _ in range(length))
@@ -295,13 +294,12 @@ class ObtainTokenWith2fa(TokenObtainPairView):
             token2fa=signing.dumps({'email':email,'purpose':'2fa'},)
             otp=self.generate_otp(email=email)
             self.send_otp_mail(email=email,code=otp)
-            # totp = pyotp.TOTP(user.otp_secret,interval=800)
-            # self.send_otp_mail(email=email,code=totp.now())
+            logger.debug('2fa enabled and mail sent')
             return Response({
                 'details':'Two factor verification required',
                 'token2fa': token2fa,
             },status=status.HTTP_401_UNAUTHORIZED)
-
+        logger.debug('2fa not enabled proceeding with normal login')
         serializer=self.get_serializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -368,8 +366,28 @@ def setup_authenticator_app(request):
             "success": False,
             'message': '2fa Already setup'
         }, status=status.HTTP_400_BAD_REQUEST)
-
-
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def seller_registration(request):
+    if request.method=='POST':
+        serializer=SellerSerializer(data=request.data,context={'request':request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                'message': 'Store created',
+                'errors':serializer.errors
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            "success": False,
+            'message': 'Store not created created',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        return Response({
+            "success": False,
+            'message': '2fa Already setup'
+        },status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 # @login_not_required

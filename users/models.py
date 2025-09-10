@@ -17,10 +17,9 @@ class CustomUser(AbstractUser):
     is_2fa_enabled = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     otp_secret = models.CharField(max_length=32, blank=True, null=True)
-
     @property
     def is_seller(self):
-        return Seller.objects.filter(seller_user=self.id).exists()
+        return Seller.objects.filter(user=self).exists()
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
     def save(self,*args,**kwargs):
@@ -29,11 +28,10 @@ class CustomUser(AbstractUser):
         super().save(*args,**kwargs)
 
 class Seller(models.Model):
-    seller_id=models.AutoField(primary_key=True,unique=True)
-    seller_user=models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
-    seller_store_name=models.CharField()
-    # seller_rating=models.FloatField()
-    seller_since=models.DateField(auto_now_add=True)
+    user=models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    store_name=models.CharField(unique=True)
+    is_active=models.BooleanField(default=True)
+    since=models.DateField(auto_now_add=True)
 
 
 class EmailToken(models.Model):

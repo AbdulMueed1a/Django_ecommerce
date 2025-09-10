@@ -10,8 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import logging
 from datetime import timedelta
-
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -142,6 +142,45 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGGING = {
+    'version':1,
+    'disable_existing_loggers':False,
+    'formatters':{
+        'standard':{
+            'format':'{levelname} : {name} : {message}',
+            'style':'{',
+        },
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+    },
+
+    'Handlers':{
+        'FileLogger':{
+            'level': os.environ.get('FILE_LOGGER_LEVEL'),
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'app.logs',
+            'maxBytes': 1024**2*6,
+            'backupCount':3,
+            'filemode': 'a',
+            'formatter':'Verbose'
+        },
+        'ConsoleLogger':{
+            'level': os.environ.get('CONSOLE_LOGGER_LEVEL'),
+            'class': 'logging.StreamHandler',
+            'formatter':'standard'
+        }
+    },
+    'Loggers':{
+        '':{
+            'Handlers':['FileLogger','ConsoleLogger'],
+            'level':'DEBUG',
+            'propagate':'false'
+        }
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES':[

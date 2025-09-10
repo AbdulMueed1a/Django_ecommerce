@@ -51,15 +51,21 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 class SellerSerializer(serializers.ModelSerializer):
-    seller_rating= serializers.SerializerMethodField()
+    user=serializers.HiddenField(default=serializers.CurrentUserDefault())
+    rating= serializers.SerializerMethodField()
     class Meta:
         model=Seller
-        fields=['seller_user','seller_store_name','seller_rating']
+        fields=['user','store_name','rating']
 
-    def get_seller_rating(self,obj):
+
+    def get_rating(self,obj):
         from django.db.models import Avg
         result = obj.products.aggregate(average_rating=Avg('p_rating'))
         avg=result['average_rating']
         if avg is None:
             return 0.0
         return avg
+
+    # def create(self, validated_data):
+    #     user=self.context['request'].user
+    #     return Seller.objects.create(user=user,**validated_data)

@@ -14,9 +14,24 @@ class ProductImageSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(obj.image_pic.url) if obj.image_pic else None
 
 class ProductSerializer(serializers.ModelSerializer):
+    # user=serializers.HiddenField(default=serializers.CurrentUserDefault())
+    # p_seller=serializers.HiddenField(default=Seller.objects.get(user=user.))
+
     class Meta:
         model = Product
-        fields = '__all__'
+        fields = [
+            'p_id',
+            'p_title',
+            'p_description',
+            'p_price',
+            'p_category',
+            'p_rating',
+            'p_stock',
+            'p_sold',
+            'p_posted',
+            'p_updated'
+        ]
+        read_only_fields = ['p_id', 'p_posted', 'p_updated', 'p_seller']
 
     def validate_p_stock(self, value):
         if value < 0:
@@ -38,6 +53,12 @@ class ProductSerializer(serializers.ModelSerializer):
         if value<0:
             raise serializers.ValidationError("Products sold can't be negative")
         return value
+
+    def create(self, validated_data):
+        user=self.context['request'].user
+        seller=Seller.objects.get(user=user.id)
+        return Product.objects.create(p_seller=seller,**validated_data)
+
 
 class ProductReviewsSerializer(serializers.ModelSerializer):
     class Meta:
